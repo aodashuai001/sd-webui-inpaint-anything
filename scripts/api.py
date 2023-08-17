@@ -39,7 +39,7 @@ from ia_ui_items import (get_cleaner_model_ids, get_inp_model_ids, get_padding_m
 from ia_logging import ia_logging
 
 from modules.api.api import encode_pil_to_base64, decode_base64_to_image
-
+sam_dict = dict(sam_masks=None, mask_image=None, cnet=None, orig_image=None, pad_mask=None)
 def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
     class RespResult(BaseModel):
         code: int = 0
@@ -68,7 +68,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
 
         global sam_dict
         sam_model_id = payload.sam_model_name
-        input_image = payload.input_image
+        input_image = decode_to_ndarray(payload.input_image)
         anime_style_chk = payload.anime_style_chk
         sam_checkpoint = os.path.join(ia_file_manager.models_dir, sam_model_id)
         if not os.path.isfile(sam_checkpoint):
@@ -145,7 +145,28 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         sam_dict["sam_masks"] = copy.deepcopy(sam_masks)
         del sam_masks
         return SamPredictResp.success(encode_to_base64(seg_img))
-
+def decode_to_ndarray(image) -> np.ndarray:
+    if os.path.exists(image):
+        return np.array(Image.open(image))
+    elif type(image) is str:
+        return np.array(decode_base64_to_image(image))
+    elif type(image) is Image.Image:
+        return np.array(image)
+    elif type(image) is np.ndarray:
+        return np.ndarray
+    else:
+        Exception("Not an image")
+def decode_to_pil(image):
+    if os.path.exists(image):
+        return Image.open(image)
+    elif type(image) is str:
+        return decode_base64_to_image(image)
+    elif type(image) is Image.Image:
+        return image
+    elif type(image) is np.ndarray:
+        return Image.fromarray(image)
+    else:
+        Exception("Not an image")
 def encode_to_base64(image):
     if type(image) is str:
         return image
