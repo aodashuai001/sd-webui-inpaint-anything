@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Body
 from pydantic import BaseModel
-from typing import Any, Optional, List
+from typing import Any, Optional, List, TypeVar
 import random
 import re
 import traceback
@@ -39,17 +39,20 @@ from ia_ui_items import (get_cleaner_model_ids, get_inp_model_ids, get_padding_m
 from ia_logging import ia_logging
 
 from modules.api.api import encode_pil_to_base64, decode_base64_to_image
+
+T = TypeVar('T')
 sam_dict = dict(sam_masks=None, mask_image=None, cnet=None, orig_image=None, pad_mask=None)
 def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
     class RespResult(BaseModel):
         code: int = 0
         msg: str = ''
+        data: Optional[T]
         @classmethod
         def failed(cls, msg: str = 'failed'):
             return RespResult(code=-1, msg=msg)
         @classmethod
-        def success(cls):
-            return RespResult(code=0, msg='Success')
+        def success(cls, data = None):
+            return RespResult(code=0, msg='Success', data=data)
     @app.get("/inpaint-anything/heartbeat")
     async def heartbeat():
         return RespResult.success()
@@ -57,11 +60,8 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         input_image: str
         sam_model_name: str = "sam_vit_h_4b8939.pth"
         anime_style_chk: bool=False
-    class SamPredictResp(RespResult):
-        output: str = ''
-        @classmethod
-        def success(cls, output):
-            return SamPredictResp(code=0, output=output)
+    class SamPredictResp(BaseModel):
+        segimg: str = ''
     @app.post("/inpaint-anything/sam/image")
     async def run_sam(payload: SamPredictRequest = Body(...)) -> Any:
         print(f"inpaint-anything API /inpaint-anything/sam/image received request")
@@ -144,7 +144,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         seg_img = Image.fromarray(seg_image)
         sam_dict["sam_masks"] = copy.deepcopy(sam_masks)
         del sam_masks
-        return SamPredictResp.success(encode_to_base64(seg_img))
+        return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_img)))
 def decode_to_ndarray(image) -> np.ndarray:
     if os.path.exists(image):
         return np.array(Image.open(image))
