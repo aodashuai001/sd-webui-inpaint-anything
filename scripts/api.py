@@ -203,11 +203,11 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
 
         sam_dict["mask_image"] = seg_image
 
-        # if input_image is not None and input_image.shape == seg_image.shape:
-        #     ret_image = cv2.addWeighted(input_image, 0.5, seg_image, 0.5, 0)
-        # else:
-        #     ret_image = seg_image
-        return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_image)))
+        if input_image is not None and input_image.shape == seg_image.shape:
+            ret_image = cv2.addWeighted(input_image, 0.5, seg_image, 0.5, 0)
+        else:
+            ret_image = seg_image
+        return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(ret_image)))
         # if sel_mask is None:
         #     return ret_image
         # else:
