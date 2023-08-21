@@ -153,12 +153,14 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_img)))
     @app.post("/inpaint-anything/sam/task")
     async def select_mask(payload: SamSelectMaskRequest = Body(...)) -> Any:
+        ignore_black_chk = False
         global sam_dict
         # if sam_dict["sam_masks"] is None:
         #     ia_logging.info("SAM select task failed, sam_dict[\"sam_masks\"] is None")
         #     return RespResult.failed("SAM select task failed")
             # return ret_sel_mask
         sam_masks = sam_dict["sam_masks"]
+        input_image = decode_to_pil(payload.input_image)
         image = decode_to_ndarray(payload.input_image)
         mask = np.zeros(image.shape[:2] + (1,), dtype=np.uint8)
         selected_mask = np.zeros((*image.shape[:2], 1), dtype=bool)
@@ -177,35 +179,35 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         #     ret_sel_mask = None if sel_mask is None else gr.update()
         #     return ret_sel_mask
 
-        # canvas_image = np.zeros((*image.shape[:2], 1), dtype=np.uint8)
-        # mask_region = np.zeros((*image.shape[:2], 1), dtype=np.uint8)
-        # for idx, seg_dict in enumerate(sam_masks):
-        #     seg_mask = np.expand_dims(seg_dict["segmentation"].astype(np.uint8), axis=-1)
-        #     canvas_mask = np.logical_not(canvas_image.astype(bool)).astype(np.uint8)
-        #     if (seg_mask * canvas_mask * mask).astype(bool).any():
-        #         mask_region = mask_region + (seg_mask * canvas_mask)
-        #     seg_color = seg_mask * canvas_mask
-        #     canvas_image = canvas_image + seg_color
+        canvas_image = np.zeros(image.shape[:2] + (1,), dtype=np.uint8)
+        mask_region = np.zeros(image.shape[:2] + (1,), dtype=np.uint8)
+        for idx, seg_dict in enumerate(sam_masks):
+            seg_mask = np.expand_dims(seg_dict["segmentation"].astype(np.uint8), axis=-1)
+            canvas_mask = np.logical_not(canvas_image.astype(bool)).astype(np.uint8)
+            if (seg_mask * canvas_mask * mask).astype(bool).any():
+                mask_region = mask_region + (seg_mask * canvas_mask)
+            seg_color = seg_mask * canvas_mask
+            canvas_image = canvas_image + seg_color
 
-        # if not ignore_black_chk:
-        #     canvas_mask = np.logical_not(canvas_image.astype(bool)).astype(np.uint8)
-        #     if (canvas_mask * mask).astype(bool).any():
-        #         mask_region = mask_region + (canvas_mask)
+        if not ignore_black_chk:
+            canvas_mask = np.logical_not(canvas_image.astype(bool)).astype(np.uint8)
+            if (canvas_mask * mask).astype(bool).any():
+                mask_region = mask_region + (canvas_mask)
 
-        # mask_region = np.tile(mask_region * 255, (1, 1, 3))
+        mask_region = np.tile(mask_region * 255, (1, 1, 3))
 
-        # seg_image = mask_region.astype(np.uint8)
+        seg_image = mask_region.astype(np.uint8)
 
         # if invert_chk:
         #     seg_image = np.logical_not(seg_image.astype(bool)).astype(np.uint8) * 255
 
-        # sam_dict["mask_image"] = seg_image
+        sam_dict["mask_image"] = seg_image
 
         # if input_image is not None and input_image.shape == seg_image.shape:
         #     ret_image = cv2.addWeighted(input_image, 0.5, seg_image, 0.5, 0)
         # else:
         #     ret_image = seg_image
-
+        return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_image)))
         # if sel_mask is None:
         #     return ret_image
         # else:
