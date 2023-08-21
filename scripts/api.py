@@ -160,7 +160,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         #     return RespResult.failed("SAM select task failed")
             # return ret_sel_mask
         sam_masks = sam_dict["sam_masks"]
-        input_image = decode_to_pil(payload.input_image)
+        input_image = decode_to_ndarray(payload.input_image)
         image = decode_to_ndarray(payload.input_image)
         mask = np.zeros(image.shape[:2] + (1,), dtype=np.uint8)
         selected_mask = np.zeros((*image.shape[:2], 1), dtype=bool)
@@ -203,8 +203,8 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
 
         sam_dict["mask_image"] = seg_image
 
-        if input_image is not None and input_image.shape == seg_image.shape:
-            ret_image = cv2.addWeighted(input_image, 0.5, seg_image, 0.5, 0)
+        if image is not None and image.shape == seg_image.shape:
+            ret_image = cv2.addWeighted(image, 0.5, seg_image, 0.5, 0)
         else:
             ret_image = seg_image
         return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(ret_image)))
