@@ -60,6 +60,11 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         input_image: str
         sam_model_name: str = "sam_vit_h_4b8939.pth"
         anime_style_chk: bool=False
+    class SamSelectMaskRequest(BaseModel):
+        input_image: str
+        select_points: list
+        sam_model_name: str = "sam_vit_h_4b8939.pth"
+        anime_style_chk: bool=False
     class SamPredictResp(BaseModel):
         segimg: str = ''
     @app.post("/inpaint-anything/sam/image")
@@ -143,8 +148,72 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         seg_image = canvas_image.astype(np.uint8)
         seg_img = Image.fromarray(seg_image)
         sam_dict["sam_masks"] = copy.deepcopy(sam_masks)
+        print(sam_dict["sam_masks"])
         del sam_masks
         return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_img)))
+    @app.post("/inpaint-anything/sam/task")
+    async def select_mask(payload: SamSelectMaskRequest = Body(...)) -> Any:
+        global sam_dict
+        # if sam_dict["sam_masks"] is None:
+        #     ia_logging.info("SAM select task failed, sam_dict[\"sam_masks\"] is None")
+        #     return RespResult.failed("SAM select task failed")
+            # return ret_sel_mask
+        sam_masks = sam_dict["sam_masks"]
+        image = decode_to_ndarray(payload.input_image)
+        mask = np.zeros(image.shape[:2] + (1,), dtype=np.uint8)
+        selected_mask = np.zeros((*image.shape[:2], 1), dtype=bool)
+        selected_points = np.array(payload.select_points)
+
+        # 将选定点的掩码设置为 True
+        selected_mask[selected_points[:, 0], selected_points[:, 1]] = True
+
+        # 使用掩码将选定的元素替换为255
+        mask[selected_mask] = 255
+        
+        # mask = sam_image["mask"][:, :, 0:1]
+
+        # if len(sam_masks) > 0 and sam_masks[0]["segmentation"].shape[:2] != mask.shape[:2]:
+        #     ia_logging.error("sam_masks shape not match")
+        #     ret_sel_mask = None if sel_mask is None else gr.update()
+        #     return ret_sel_mask
+
+        # canvas_image = np.zeros((*image.shape[:2], 1), dtype=np.uint8)
+        # mask_region = np.zeros((*image.shape[:2], 1), dtype=np.uint8)
+        # for idx, seg_dict in enumerate(sam_masks):
+        #     seg_mask = np.expand_dims(seg_dict["segmentation"].astype(np.uint8), axis=-1)
+        #     canvas_mask = np.logical_not(canvas_image.astype(bool)).astype(np.uint8)
+        #     if (seg_mask * canvas_mask * mask).astype(bool).any():
+        #         mask_region = mask_region + (seg_mask * canvas_mask)
+        #     seg_color = seg_mask * canvas_mask
+        #     canvas_image = canvas_image + seg_color
+
+        # if not ignore_black_chk:
+        #     canvas_mask = np.logical_not(canvas_image.astype(bool)).astype(np.uint8)
+        #     if (canvas_mask * mask).astype(bool).any():
+        #         mask_region = mask_region + (canvas_mask)
+
+        # mask_region = np.tile(mask_region * 255, (1, 1, 3))
+
+        # seg_image = mask_region.astype(np.uint8)
+
+        # if invert_chk:
+        #     seg_image = np.logical_not(seg_image.astype(bool)).astype(np.uint8) * 255
+
+        # sam_dict["mask_image"] = seg_image
+
+        # if input_image is not None and input_image.shape == seg_image.shape:
+        #     ret_image = cv2.addWeighted(input_image, 0.5, seg_image, 0.5, 0)
+        # else:
+        #     ret_image = seg_image
+
+        # if sel_mask is None:
+        #     return ret_image
+        # else:
+        #     if sel_mask["image"].shape == ret_image.shape and np.all(sel_mask["image"] == ret_image):
+        #         return gr.update()
+        #     else:
+        #         return gr.update(value=ret_image)
+
 def decode_to_ndarray(image) -> np.ndarray:
     if os.path.exists(image):
         return np.array(Image.open(image))

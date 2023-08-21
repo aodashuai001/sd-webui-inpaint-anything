@@ -249,7 +249,6 @@ def select_mask(input_image, sam_image, invert_chk, ignore_black_chk, sel_mask):
 
     image = sam_image["image"]
     mask = sam_image["mask"][:, :, 0:1]
-
     if len(sam_masks) > 0 and sam_masks[0]["segmentation"].shape[:2] != mask.shape[:2]:
         ia_logging.error("sam_masks shape not match")
         ret_sel_mask = None if sel_mask is None else gr.update()
