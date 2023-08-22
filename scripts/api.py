@@ -173,7 +173,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         expand_mask: Optional[int] = 0
     class SamMaskResp(BaseModel):
         mask: str = ''
-        alpha_image: str = ''
+        image: str = ''
     @app.post("/inpaint-anything/sam/task")
     async def select_mask(payload: SamSelectMaskRequest = Body(...)) -> Any:
         ignore_black_chk = False
@@ -250,7 +250,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         alpha_image.putalpha(mask_image)
 
 
-        return RespResult.success(data=SamMaskResp(mask=mask_image_base64, alpha_image=encode_to_base64(alpha_image)))
+        return RespResult.success(data=SamMaskResp(mask=mask_image_base64, image=encode_to_base64(alpha_image)))
 
     def expand_mask(sam_dict, expand_iteration=1):
         # expand_mask
