@@ -63,6 +63,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
 
     class SamPredictResp(BaseModel):
         segimg: str = ''
+        saminfo: Optional[Any] = None
     @app.post("/inpaint-anything/sam/image")
     async def run_sam(payload: SamPredictRequest = Body(...)) -> Any:
         print(f"inpaint-anything API /inpaint-anything/sam/image received request")
@@ -144,9 +145,9 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         seg_image = canvas_image.astype(np.uint8)
         seg_img = Image.fromarray(seg_image)
         sam_dict["sam_masks"] = copy.deepcopy(sam_masks)
-        print(sam_dict["sam_masks"])
+        # print(sam_dict["sam_masks"])
         del sam_masks
-        return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_img)))
+        return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_img), saminfo=sam_dict["sam_masks"]))
     class SamSelectMaskRequest(BaseModel):
         input_image: str
         select_points: list
