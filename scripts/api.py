@@ -146,8 +146,8 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         seg_img = Image.fromarray(seg_image)
         sam_dict["sam_masks"] = copy.deepcopy(sam_masks)
         # print(sam_dict["sam_masks"])
-        del sam_masks
-        return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_img), saminfo=sam_dict["sam_masks"]))
+        # del sam_masks
+        return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_img), saminfo=sam_masks))
     class SamSelectMaskRequest(BaseModel):
         input_image: str
         select_points: list
