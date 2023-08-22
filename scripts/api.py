@@ -224,7 +224,15 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         # run_get_mask
         mask_image_base64 = encode_to_base64(seg_image)
 
-        return RespResult.success(data=SamMaskResp(mask=mask_image_base64))
+        # run_get_alpha_image
+        
+        alpha_image = Image.fromarray(input_image).convert("RGBA")
+        mask_image = Image.fromarray(seg_image).convert("L")
+
+        alpha_image.putalpha(mask_image)
+
+
+        return RespResult.success(data=SamMaskResp(mask=mask_image_base64, alpha_image=encode_to_base64(alpha_image)))
 
     def expand_mask(sam_dict, expand_iteration=1):
         # expand_mask
@@ -241,11 +249,6 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
 
         return new_sel_mask
 
-
-        # if sel_mask["image"].shape == ret_image.shape and np.all(sel_mask["image"] == ret_image):
-        #     return gr.update()
-        # else:
-        #     return gr.update(value=ret_image)
     def run_get_mask(sam_dict, sel_mask):
         # global sam_dict
         if sam_dict["mask_image"] is None:
