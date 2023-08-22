@@ -27,6 +27,17 @@ from tqdm import tqdm
 import os
 import gc
 
+import json
+import pickle
+from abc import ABCMeta, abstractmethod
+
+
+# ===========================
+# Rigister handler
+# ===========================
+
+
+
 from ia_file_manager import IAFileManager, download_model_from_hf, ia_file_manager
 from ia_config import IAConfig, get_ia_config_index, set_ia_config, setup_ia_config_ini
 from ia_get_dataset_colormap import create_pascal_label_colormap
@@ -39,6 +50,7 @@ from ia_ui_items import (get_cleaner_model_ids, get_inp_model_ids, get_padding_m
 from ia_logging import ia_logging
 
 from modules.api.api import encode_pil_to_base64, decode_base64_to_image
+import pickle
 
 T = TypeVar('T')
 sam_dict = dict(sam_masks=None, mask_image=None, cnet=None, orig_image=None, pad_mask=None)
@@ -57,13 +69,14 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
     async def heartbeat():
         return RespResult.success()
     class SamPredictRequest(BaseModel):
+        image_id: int
         input_image: str
         sam_model_name: str = "sam_vit_h_4b8939.pth"
         anime_style_chk: bool=False
 
     class SamPredictResp(BaseModel):
         segimg: str = ''
-        saminfo: Optional[Any] = None
+        # saminfo: Optional[Any] = None
     @app.post("/inpaint-anything/sam/image")
     async def run_sam(payload: SamPredictRequest = Body(...)) -> Any:
         print(f"inpaint-anything API /inpaint-anything/sam/image received request")
@@ -146,9 +159,13 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         seg_img = Image.fromarray(seg_image)
         sam_dict["sam_masks"] = copy.deepcopy(sam_masks)
         # print(sam_dict["sam_masks"])
-        # del sam_masks
-        return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_img), saminfo=sam_masks))
+        del sam_masks
+        return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_img)))
+    def save_mask(sam_masks):
+        filepath = 'output'
+
     class SamSelectMaskRequest(BaseModel):
+        image_id: int
         input_image: str
         select_points: list
         sam_model_name: str = "sam_vit_h_4b8939.pth"
@@ -315,6 +332,62 @@ def encode_to_base64(image):
         return encode_pil_to_base64(pil).decode()
     else:
         Exception("Invalid type")
+# ==========================================================
+# Modified from mmcv
+# ==========================================================
+
+
+class BaseFileHandler(metaclass=ABCMeta):
+    @abstractmethod
+    def load_from_fileobj(self, file, **kwargs):
+        pass
+
+    @abstractmethod
+    def dump_to_fileobj(self, obj, file, **kwargs):
+        pass
+
+    @abstractmethod
+    def dump_to_str(self, obj, **kwargs):
+        pass
+
+    def load_from_path(self, filepath, mode="r", **kwargs):
+        with open(filepath, mode) as f:
+            return self.load_from_fileobj(f, **kwargs)
+
+    def dump_to_path(self, obj, filepath, mode="w", **kwargs):
+        with open(filepath, mode) as f:
+            self.dump_to_fileobj(obj, f, **kwargs)
+
+
+class JsonHandler(BaseFileHandler):
+    def load_from_fileobj(self, file):
+        return json.load(file)
+
+    def dump_to_fileobj(self, obj, file, **kwargs):
+        json.dump(obj, file, **kwargs)
+
+    def dump_to_str(self, obj, **kwargs):
+        return json.dumps(obj, **kwargs)
+
+
+class PickleHandler(BaseFileHandler):
+    def load_from_fileobj(self, file, **kwargs):
+        return pickle.load(file, **kwargs)
+
+    def load_from_path(self, filepath, **kwargs):
+        return super(PickleHandler, self).load_from_path(filepath, mode="rb", **kwargs)
+
+    def dump_to_str(self, obj, **kwargs):
+        kwargs.setdefault("protocol", 2)
+        return pickle.dumps(obj, **kwargs)
+
+    def dump_to_fileobj(self, obj, file, **kwargs):
+        kwargs.setdefault("protocol", 2)
+        pickle.dump(obj, file, **kwargs)
+
+    def dump_to_path(self, obj, filepath, **kwargs):
+        super(PickleHandler, self).dump_to_path(obj, filepath, mode="wb", **kwargs)
+
 
 try:
     import modules.script_callbacks as script_callbacks
