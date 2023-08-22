@@ -168,14 +168,15 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         image_id: int
         input_image: str
         select_points: list
-        invert_chk: bool=False
+        invert_chk: Optional[bool]=False
+        ignore_black_chk: Optional[bool]=False
         expand_mask: Optional[int] = 0
     class SamMaskResp(BaseModel):
         mask: str = ''
         image: str = ''
     @app.post("/inpaint-anything/sam/task")
     async def select_mask(payload: SamSelectMaskRequest = Body(...)) -> Any:
-        ignore_black_chk = False
+        ignore_black_chk = payload.ignore_black_chk
         global sam_dict
         # if sam_dict["sam_masks"] is None:
         #     ia_logging.info("SAM select task failed, sam_dict[\"sam_masks\"] is None")
