@@ -168,7 +168,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         image_id: int
         input_image: str
         select_points: list
-        anime_style_chk: bool=False
+        invert_chk: bool=False
         expand_mask: Optional[int] = 0
     class SamMaskResp(BaseModel):
         mask: str = ''
@@ -220,8 +220,8 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
 
         seg_image = mask_region.astype(np.uint8)
 
-        # if invert_chk:
-        #     seg_image = np.logical_not(seg_image.astype(bool)).astype(np.uint8) * 255
+        if payload.invert_chk:
+            seg_image = np.logical_not(seg_image.astype(bool)).astype(np.uint8) * 255
 
         sam_dict["mask_image"] = seg_image
 
