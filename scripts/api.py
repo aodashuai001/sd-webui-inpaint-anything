@@ -190,7 +190,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         selected_points = np.array(payload.select_points)
 
         # 将选定点的掩码设置为 True
-        selected_mask[selected_points[:, 0], selected_points[:, 1]] = True
+        selected_mask[selected_points[:, 1], selected_points[:, 0]] = True
 
         # 使用掩码将选定的元素替换为255
         mask[selected_mask] = 255
