@@ -60,11 +60,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         input_image: str
         sam_model_name: str = "sam_vit_h_4b8939.pth"
         anime_style_chk: bool=False
-    class SamSelectMaskRequest(BaseModel):
-        input_image: str
-        select_points: list
-        sam_model_name: str = "sam_vit_h_4b8939.pth"
-        anime_style_chk: bool=False
+
     class SamPredictResp(BaseModel):
         segimg: str = ''
     @app.post("/inpaint-anything/sam/image")
@@ -151,6 +147,15 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         print(sam_dict["sam_masks"])
         del sam_masks
         return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_img)))
+    class SamSelectMaskRequest(BaseModel):
+        input_image: str
+        select_points: list
+        sam_model_name: str = "sam_vit_h_4b8939.pth"
+        anime_style_chk: bool=False
+        expand_mask: Optional[int] = 0
+    class SamMaskResp(BaseModel):
+        mask: str = ''
+        alpha_image: str = ''
     @app.post("/inpaint-anything/sam/task")
     async def select_mask(payload: SamSelectMaskRequest = Body(...)) -> Any:
         ignore_black_chk = False
@@ -203,18 +208,76 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
 
         sam_dict["mask_image"] = seg_image
 
-        if image is not None and image.shape == seg_image.shape:
-            ret_image = cv2.addWeighted(image, 0.5, seg_image, 0.5, 0)
-        else:
-            ret_image = seg_image
-        return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(ret_image)))
-        # if sel_mask is None:
-        #     return ret_image
+        # if image is not None and image.shape == seg_image.shape:
+        #     ret_image = cv2.addWeighted(image, 0.5, seg_image, 0.5, 0)
         # else:
-        #     if sel_mask["image"].shape == ret_image.shape and np.all(sel_mask["image"] == ret_image):
-        #         return gr.update()
-        #     else:
-        #         return gr.update(value=ret_image)
+        #     ret_image = seg_image
+        
+        # expand_mask
+        if payload.expand_mask > 0:
+            seg_image = expand_mask(sam_dict, payload.expand_mask)
+            # if input_image is not None and input_image.shape == new_sel_mask.shape:
+            #     ret_image = cv2.addWeighted(input_image, 0.5, new_sel_mask, 0.5, 0)
+            # else:
+            #     ret_image = new_sel_mask
+        
+        # run_get_mask
+        mask_image_base64 = encode_to_base64(seg_image)
+
+        return RespResult.success(data=SamMaskResp(mask=mask_image_base64))
+
+    def expand_mask(sam_dict, expand_iteration=1):
+        # expand_mask
+        if sam_dict["mask_image"] is None:
+            return None
+
+        new_sel_mask = sam_dict["mask_image"]
+
+        expand_iteration = int(np.clip(expand_iteration, 1, 5))
+
+        new_sel_mask = cv2.dilate(new_sel_mask, np.ones((3, 3), dtype=np.uint8), iterations=expand_iteration)
+
+        sam_dict["mask_image"] = new_sel_mask
+
+        return new_sel_mask
+
+
+        # if sel_mask["image"].shape == ret_image.shape and np.all(sel_mask["image"] == ret_image):
+        #     return gr.update()
+        # else:
+        #     return gr.update(value=ret_image)
+    def run_get_mask(sam_dict, sel_mask):
+        # global sam_dict
+        if sam_dict["mask_image"] is None:
+            return None
+
+        mask_image = sam_dict["mask_image"]
+
+        save_name = "_".join([ia_file_manager.savename_prefix, "created_mask"]) + ".png"
+        save_name = os.path.join(ia_file_manager.outputs_dir, save_name)
+        Image.fromarray(mask_image).save(save_name)
+
+        return mask_image
+    def run_get_alpha_image(input_image, sel_mask):
+        global sam_dict
+        if input_image is None or sam_dict["mask_image"] is None or sel_mask is None:
+            return None, ""
+
+        mask_image = sam_dict["mask_image"]
+        if input_image.shape != mask_image.shape:
+            ia_logging.error("The size of image and mask do not match")
+            return None, ""
+
+        alpha_image = Image.fromarray(input_image).convert("RGBA")
+        mask_image = Image.fromarray(mask_image).convert("L")
+
+        alpha_image.putalpha(mask_image)
+
+        save_name = "_".join([ia_file_manager.savename_prefix, "rgba_image"]) + ".png"
+        save_name = os.path.join(ia_file_manager.outputs_dir, save_name)
+        alpha_image.save(save_name)
+
+        return alpha_image, f"saved: {save_name}"
 
 def decode_to_ndarray(image) -> np.ndarray:
     if os.path.exists(image):
