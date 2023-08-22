@@ -168,7 +168,6 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         image_id: int
         input_image: str
         select_points: list
-        sam_model_name: str = "sam_vit_h_4b8939.pth"
         anime_style_chk: bool=False
         expand_mask: Optional[int] = 0
     class SamMaskResp(BaseModel):
