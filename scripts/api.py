@@ -29,6 +29,8 @@ import gc
 
 import json
 import pickle
+from datetime import datetime
+
 from abc import ABCMeta, abstractmethod
 
 
@@ -50,6 +52,7 @@ from ia_ui_items import (get_cleaner_model_ids, get_inp_model_ids, get_padding_m
 from ia_logging import ia_logging
 
 from modules.api.api import encode_pil_to_base64, decode_base64_to_image
+from modules import shared
 import pickle
 
 T = TypeVar('T')
@@ -157,12 +160,25 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
                 canvas_image = temp_canvas_image
         seg_image = canvas_image.astype(np.uint8)
         seg_img = Image.fromarray(seg_image)
-        sam_dict["sam_masks"] = copy.deepcopy(sam_masks)
+        # sam_dict["sam_masks"] = copy.deepcopy(sam_masks)
         # print(sam_dict["sam_masks"])
-        del sam_masks
+        save_segmentations(sam_mask, payload.image_id)
+        # del sam_masks
         return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_img)))
-    def save_mask(sam_masks):
-        filepath = 'output'
+    def save_segmentations(sam_masks, image_id):
+        save_name = "_".join([str(image_id), "segmentations"]) + ".dat"
+        save_name = os.path.join(outputs_dir(), save_name)
+        print(save_name)
+        ph = PickleHandler()
+        ph.dump_to_path(sam_masks, save_name)
+    def load_segmentations(image_id) -> Any:
+        for idx in range(5):
+            date = datetime.now() - datetime.timedelta(days=idx)
+            save_name = "_".join([str(image_id), "segmentations"]) + ".dat"
+            save_name = os.path.join(outputs_dir(date), save_name)
+            if os.path.isfile(save_name):
+                ph = PickleHandler()
+                return ph.load_from_path(save_name)
 
     class SamSelectMaskRequest(BaseModel):
         image_id: int
@@ -177,12 +193,13 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
     @app.post("/inpaint-anything/sam/task")
     async def select_mask(payload: SamSelectMaskRequest = Body(...)) -> Any:
         ignore_black_chk = payload.ignore_black_chk
-        global sam_dict
-        # if sam_dict["sam_masks"] is None:
-        #     ia_logging.info("SAM select task failed, sam_dict[\"sam_masks\"] is None")
-        #     return RespResult.failed("SAM select task failed")
-            # return ret_sel_mask
-        sam_masks = sam_dict["sam_masks"]
+        # global sam_dict
+        sam_masks = load_segmentations(payload.image_id)
+        if sam_masks is None:
+            ia_logging.info("SAM select task failed, sam_masks is None")
+            return RespResult.failed("SAM select task failed")
+        # sam_masks = sam_dict["sam_masks"]
+
         input_image = decode_to_ndarray(payload.input_image)
         image = decode_to_ndarray(payload.input_image)
         mask = np.zeros(image.shape[:2] + (1,), dtype=np.uint8)
@@ -224,7 +241,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         if payload.invert_chk:
             seg_image = np.logical_not(seg_image.astype(bool)).astype(np.uint8) * 255
 
-        sam_dict["mask_image"] = seg_image
+        # sam_dict["mask_image"] = seg_image
 
         # if image is not None and image.shape == seg_image.shape:
         #     ret_image = cv2.addWeighted(image, 0.5, seg_image, 0.5, 0)
@@ -233,7 +250,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         
         # expand_mask
         if payload.expand_mask > 0:
-            seg_image = expand_mask(sam_dict, payload.expand_mask)
+            seg_image = expand_mask(seg_image, payload.expand_mask)
             # if input_image is not None and input_image.shape == new_sel_mask.shape:
             #     ret_image = cv2.addWeighted(input_image, 0.5, new_sel_mask, 0.5, 0)
             # else:
@@ -252,12 +269,12 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
 
         return RespResult.success(data=SamMaskResp(mask=mask_image_base64, image=encode_to_base64(alpha_image)))
 
-    def expand_mask(sam_dict, expand_iteration=1):
+    def expand_mask(new_sel_mask, expand_iteration=1):
         # expand_mask
-        if sam_dict["mask_image"] is None:
-            return None
+        # if sam_dict["mask_image"] is None:
+        #     return None
 
-        new_sel_mask = sam_dict["mask_image"]
+        # new_sel_mask = sam_dict["mask_image"]
 
         expand_iteration = int(np.clip(expand_iteration, 1, 5))
 
@@ -266,39 +283,6 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         sam_dict["mask_image"] = new_sel_mask
 
         return new_sel_mask
-
-    def run_get_mask(sam_dict, sel_mask):
-        # global sam_dict
-        if sam_dict["mask_image"] is None:
-            return None
-
-        mask_image = sam_dict["mask_image"]
-
-        save_name = "_".join([ia_file_manager.savename_prefix, "created_mask"]) + ".png"
-        save_name = os.path.join(ia_file_manager.outputs_dir, save_name)
-        Image.fromarray(mask_image).save(save_name)
-
-        return mask_image
-    def run_get_alpha_image(input_image, sel_mask):
-        global sam_dict
-        if input_image is None or sam_dict["mask_image"] is None or sel_mask is None:
-            return None, ""
-
-        mask_image = sam_dict["mask_image"]
-        if input_image.shape != mask_image.shape:
-            ia_logging.error("The size of image and mask do not match")
-            return None, ""
-
-        alpha_image = Image.fromarray(input_image).convert("RGBA")
-        mask_image = Image.fromarray(mask_image).convert("L")
-
-        alpha_image.putalpha(mask_image)
-
-        save_name = "_".join([ia_file_manager.savename_prefix, "rgba_image"]) + ".png"
-        save_name = os.path.join(ia_file_manager.outputs_dir, save_name)
-        alpha_image.save(save_name)
-
-        return alpha_image, f"saved: {save_name}"
 
 def decode_to_ndarray(image) -> np.ndarray:
     if os.path.exists(image):
@@ -332,6 +316,30 @@ def encode_to_base64(image):
         return encode_pil_to_base64(pil).decode()
     else:
         Exception("Invalid type")
+def outputs_dir(d = None) -> str:
+    """Get inpaint-anything outputs directory.
+
+    Returns:
+        str: inpaint-anything outputs directory
+    """
+    if not d :
+        d = datetime.now()
+    _ia_outputs_dir = update_ia_outputs_dir(d)
+    if not os.path.isdir(_ia_outputs_dir):
+        os.makedirs(_ia_outputs_dir, exist_ok=True)
+    return _ia_outputs_dir
+def update_ia_outputs_dir(d = datetime.now()) -> None:
+    """Update inpaint-anything outputs directory.
+
+    Returns:
+        None
+    """
+    config_save_folder = shared.opts.data.get("inpaint_anything_save_folder", "inpaint-anything")
+    if config_save_folder in ["inpaint-anything", "img2img-images"]:
+        return os.path.join(shared.data_path,
+                                            "outputs", config_save_folder,
+                                            d.strftime("%Y-%m-%d"))
+
 # ==========================================================
 # Modified from mmcv
 # ==========================================================
