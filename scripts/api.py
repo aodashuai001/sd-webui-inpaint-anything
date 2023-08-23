@@ -29,7 +29,7 @@ import gc
 
 import json
 import pickle
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from abc import ABCMeta, abstractmethod
 
@@ -162,7 +162,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         seg_img = Image.fromarray(seg_image)
         # sam_dict["sam_masks"] = copy.deepcopy(sam_masks)
         # print(sam_dict["sam_masks"])
-        save_segmentations(sam_mask, payload.image_id)
+        save_segmentations(sam_masks, payload.image_id)
         # del sam_masks
         return RespResult.success(data=SamPredictResp(segimg=encode_to_base64(seg_img)))
     def save_segmentations(sam_masks, image_id):
@@ -173,7 +173,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         ph.dump_to_path(sam_masks, save_name)
     def load_segmentations(image_id) -> Any:
         for idx in range(5):
-            date = datetime.now() - datetime.timedelta(days=idx)
+            date = datetime.now() - timedelta(days=idx)
             save_name = "_".join([str(image_id), "segmentations"]) + ".dat"
             save_name = os.path.join(outputs_dir(date), save_name)
             if os.path.isfile(save_name):
