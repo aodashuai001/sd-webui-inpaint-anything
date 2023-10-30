@@ -71,3 +71,9 @@ if not launch.is_installed("packaging"):
         launch.run_pip("install packaging", "requirements for packaging")
     except Exception:
         print("Can't install packaging. Please follow the readme to install manually")
+
+if not launch.is_installed("nacos-sdk-python"):
+    try:
+        launch.run_pip("install nacos-sdk-python", "requirements for nacos-sdk-python")
+    except Exception:
+        print("Can't install accelerate. Please follow the readme to install manually")
