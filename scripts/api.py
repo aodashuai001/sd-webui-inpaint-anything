@@ -106,8 +106,11 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
             ia_logging.error(str(e))
             del sam_predictor
             return RespResult.failed("SAM predictor failed")
-  
-        return RespResult.success(data=[encode_to_base64(image_embedding)])
+        image_embedding_dumps = pickle.dumps(image_embedding)
+        # 将二进制字符串编码为Base64格式
+        image_embedding_base64 = base64.b64encode(image_embedding_dumps).decode()
+        # print(image_embedding_base64)
+        return RespResult.success(data=[image_embedding_base64])
     @app.post("/inpaint-anything/sam/all")
     async def run_sam_all(payload: SamPredictRequest = Body(...)) -> Any:
         print(f"inpaint-anything API /inpaint-anything/sam/all received request")
