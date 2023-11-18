@@ -3,7 +3,8 @@ from fastapi import FastAPI, Body
 import gradio as gr
 import numpy as np
 from nacos_client.client import NacosClient
-import asyncio
+import threading
+import time
 from ia_logging import ia_logging
 import socket
 import sys
@@ -18,13 +19,15 @@ username = ''  # 可选，访问密钥
 password = ''  # 可选，访问密钥
 
 service_name = 'sd-service'  # 注册的服务名
-ip = get_local_ip()  # 本机IP地址
-port = 7861  # 服务端口号
+# ip = get_local_ip()  # 本机IP地址
+# port = 7861  # 服务端口号
+ip = "https://4517q65q57.zicp.fun"
+port = 0
 weight = 1.0  # 权重，默认为1.0
-cluster_name = 'dev'  # 可选，集群名，默认为'default'
+# cluster_name = 'dev'  # 可选，集群名，默认为'default'
 metadata = {}  # 可选，元数据，用于自定义信息
 def set_nacos_config():
-    global server_address, namespace, username, password
+    global server_address, namespace, username, password, ip
     profiles = 'DEFAULT'
     # ia_logging.info(sys.argv)
     for idx in range(len(sys.argv)):
@@ -32,6 +35,9 @@ def set_nacos_config():
         if arg.startswith('--profiles'):
             profiles = sys.argv[idx + 1].upper()
             break
+    if profiles != 'dev':
+        ip = get_local_ip()
+        port = 7861
     ia_logging.info(f'current profiles is {profiles}')
     server_address = get_ia_config('nacos_server', profiles)
     namespace = get_ia_config('nacos_namespace', profiles)
@@ -47,11 +53,13 @@ def nacos_client_connect(_: gr.Blocks, app: FastAPI):
     if not nacos_conn_status:
         ia_logging.info('nacos client connect failed')
     else:
-        asyncio.run(nacos_heartbeat())
-async def nacos_heartbeat():
+        nacos_thread = threading.Thread(target=nacos_heartbeat)
+        # 启动线程
+        nacos_thread.start()
+def nacos_heartbeat():
     while True:
         client.send_heartbeat(service_name=service_name, ip=ip, port=port, weight=weight)
-        await asyncio.sleep(10.0)
+        time.sleep(10.0)  # 线程休眠2秒
         ia_logging.info('nacos heartbeat')
 
 try:

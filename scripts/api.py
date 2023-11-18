@@ -86,6 +86,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
     async def run_sam_embedding(payload: SamPredictRequest = Body(...)) -> Any:
         print(f"inpaint-anything API /inpaint-anything/sam/embedding received request")
         sam_model_id = payload.sam_model_name
+        # sam_model_id = 'sam_vit_b_01ec64.pth'
         input_image = decode_to_cv2(payload.input_image)
         sam_checkpoint = os.path.join(ia_file_manager.models_dir, sam_model_id)
         if not os.path.isfile(sam_checkpoint):
@@ -106,11 +107,23 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
             ia_logging.error(str(e))
             del sam_predictor
             return RespResult.failed("SAM predictor failed")
-        image_embedding_dumps = pickle.dumps(image_embedding)
+        # new_length = int(np.ceil(len(image_embedding) / 4) * 4)
+        # image_embedding = np.resize(image_embedding, new_length)
+        image_embedding_dumps = image_embedding.tobytes()
         # 将二进制字符串编码为Base64格式
-        image_embedding_base64 = base64.b64encode(image_embedding_dumps).decode()
+        image_embedding_base64 = base64.b64encode(image_embedding_dumps).decode('utf-8')
         # print(image_embedding_base64)
         return RespResult.success(data=[image_embedding_base64])
+
+    def base64_encode(data):
+        """
+        解决base64编码结尾缺少=报错的问题
+        """
+        missing_padding = 4 - len(data) % 4
+        if missing_padding:
+            encode += '=' * missing_padding
+        decode = base64.b64encode(encode)
+        return decode
     @app.post("/inpaint-anything/sam/all")
     async def run_sam_all(payload: SamPredictRequest = Body(...)) -> Any:
         print(f"inpaint-anything API /inpaint-anything/sam/all received request")
@@ -430,6 +443,8 @@ def decode_to_cv2(image):
     if os.path.exists(image):
         return cv2.imread(image)
     elif type(image) is str:
+        while len(image) % 4 != 0:
+            image += '='
         img_data = base64.b64decode(image)
         img_array = np.fromstring(img_data, np.uint8)
         return cv2.imdecode(img_array, cv2.COLOR_RGB2BGR)
