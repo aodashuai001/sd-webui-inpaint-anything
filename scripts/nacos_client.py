@@ -10,7 +10,12 @@ import socket
 import sys
 from ia_config import IAConfig, get_ia_config
 def get_local_ip():
-    ip = socket.gethostbyname(socket.gethostname())
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('114.114.114.114', 80))
+        ip = s.getsockname()[0]
+    finally:
+        s.close()
     return ip
 
 server_address = 'http://120.78.215.48:8848'
@@ -27,7 +32,7 @@ weight = 1.0  # 权重，默认为1.0
 # cluster_name = 'dev'  # 可选，集群名，默认为'default'
 metadata = {}  # 可选，元数据，用于自定义信息
 def set_nacos_config():
-    global server_address, namespace, username, password, ip
+    global server_address, namespace, username, password, ip, port
     profiles = 'DEFAULT'
     # ia_logging.info(sys.argv)
     for idx in range(len(sys.argv)):
