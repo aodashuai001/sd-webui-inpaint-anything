@@ -40,9 +40,13 @@ def set_nacos_config():
         if arg.startswith('--profiles'):
             profiles = sys.argv[idx + 1].upper()
             break
-    if profiles != 'dev':
+    ip = get_ia_config('nacos_client_ip', profiles)
+    if ip == 'local':
         ip = get_local_ip()
         port = 7861
+    else:
+        port = get_ia_config('nacos_client_port', profiles)
+        
     ia_logging.info(f'current profiles is {profiles}')
     server_address = get_ia_config('nacos_server', profiles)
     namespace = get_ia_config('nacos_namespace', profiles)
