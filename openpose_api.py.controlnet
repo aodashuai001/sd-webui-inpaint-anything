@@ -1,0 +1,76 @@
+import numpy as np
+from fastapi import FastAPI, Body
+from fastapi.exceptions import HTTPException
+from PIL import Image
+
+import gradio as gr
+
+from modules.api.models import *
+from modules.api import api
+
+from scripts import external_code, global_state
+from scripts.processor import preprocessor_sliders_config
+from scripts.logging import logger
+import json
+
+def encode_to_base64(image):
+    if type(image) is str:
+        return image
+    elif type(image) is Image.Image:
+        return api.encode_pil_to_base64(image)
+    elif type(image) is np.ndarray:
+        return encode_np_to_base64(image)
+    else:
+        return ""
+
+def encode_np_to_base64(image):
+    pil = Image.fromarray(image)
+    return api.encode_pil_to_base64(pil)
+class JsonAcceptor:
+    def __init__(self) -> None:
+        self.value = ""
+
+    def accept(self, json_string: str) -> None:
+        self.value = json_string
+        print(self.value)
+def openpose_api(_: gr.Blocks, app: FastAPI):
+    @app.get("/openpose/heartbeat")
+    async def heartbeat():
+        return {"info": "Success"}
+    cached_cn_preprocessors = global_state.cache_preprocessors(global_state.cn_preprocessor_modules)
+    @app.post("/openpose/run")
+    async def openpose(
+        controlnet_input_image: str = Body(title='Controlnet Input Images'),
+        controlnet_processor_res: int = Body(512, title='Controlnet Processor Resolution'),
+        controlnet_threshold_a: float = Body(64, title='Controlnet Threshold a'),
+        controlnet_threshold_b: float = Body(64, title='Controlnet Threshold b')
+    ):
+        controlnet_module = 'openpose_full'
+        controlnet_module = global_state.reverse_preprocessor_aliases.get(controlnet_module, controlnet_module)
+
+        if controlnet_module not in cached_cn_preprocessors:
+            raise HTTPException(
+                status_code=422, detail="Module not available")
+
+        if not controlnet_input_image:
+            raise HTTPException(
+                status_code=422, detail="No image selected")
+
+        logger.info(f"Detecting openpose images with the {controlnet_module} module.")
+
+        processor_module = cached_cn_preprocessors[controlnet_module]
+
+        input_image = controlnet_input_image
+
+        json_acceptor = JsonAcceptor()
+        img = external_code.to_base64_nparray(input_image)
+        result = processor_module(img, res=controlnet_processor_res, thr_a=controlnet_threshold_a, thr_b=controlnet_threshold_b, json_pose_callback=json_acceptor.accept)[0]
+
+        global_state.cn_preprocessor_unloadable.get(controlnet_module, lambda: None)()
+        return {"json": json.loads(json_acceptor.value), "info": "Success"}
+
+try:
+    import modules.script_callbacks as script_callbacks
+    script_callbacks.on_app_started(openpose_api)
+except:
+    pass
