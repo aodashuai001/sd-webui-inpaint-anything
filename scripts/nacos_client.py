@@ -67,9 +67,13 @@ def nacos_client_connect(_: gr.Blocks, app: FastAPI):
         nacos_thread.start()
 def nacos_heartbeat():
     while True:
-        client.send_heartbeat(service_name=service_name, ip=ip, port=port, weight=weight)
-        time.sleep(10.0)  # 线程休眠2秒
-        ia_logging.info('nacos heartbeat')
+        try:
+            client.send_heartbeat(service_name=service_name, ip=ip, port=port, weight=weight)
+            time.sleep(10.0)  # 线程休眠2秒
+            ia_logging.info('nacos heartbeat')
+        except Exception:
+            ia_logging.info('nacos client send heartbeat error')
+
 
 try:
     import modules.script_callbacks as script_callbacks
