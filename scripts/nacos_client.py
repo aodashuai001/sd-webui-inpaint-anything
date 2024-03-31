@@ -22,6 +22,7 @@ server_address = 'http://120.78.215.48:8848'
 namespace = '3bcb0b1d-1c2b-4069-97df-9612dac5005c'
 username = ''  # 可选，访问密钥
 password = ''  # 可选，访问密钥
+nacos_enable = False
 
 service_name = 'sd-service'  # 注册的服务名
 # ip = get_local_ip()  # 本机IP地址
@@ -32,7 +33,7 @@ weight = 1.0  # 权重，默认为1.0
 # cluster_name = 'dev'  # 可选，集群名，默认为'default'
 metadata = {}  # 可选，元数据，用于自定义信息
 def set_nacos_config():
-    global server_address, namespace, username, password, ip, port
+    global server_address, namespace, username, password, ip, port, nacos_enable
     profiles = 'DEFAULT'
     # ia_logging.info(sys.argv)
     for idx in range(len(sys.argv)):
@@ -52,10 +53,13 @@ def set_nacos_config():
     namespace = get_ia_config('nacos_namespace', profiles)
     username = get_ia_config('nacos_username', profiles)
     password = get_ia_config('nacos_password', profiles)
-
+    password = get_ia_config('nacos_password', profiles)
+    nacos_enable = get_ia_config('nacos_enable', profiles)
 def nacos_client_connect(_: gr.Blocks, app: FastAPI):
     global client
     set_nacos_config()
+    if not nacos_enable:
+        return
     ia_logging.info(f'nacos client start connecting:{server_address},{namespace}')
     client = NacosClient(server_addresses=server_address, namespace=namespace, password=f"{password}", username=f"{username}")
     nacos_conn_status = client.add_naming_instance(service_name=service_name, ip=ip, port=port, weight=weight, healthy=True, enable=True)
