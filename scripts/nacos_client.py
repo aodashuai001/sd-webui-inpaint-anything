@@ -58,7 +58,7 @@ def set_nacos_config():
 def nacos_client_connect(_: gr.Blocks, app: FastAPI):
     global client, nacos_enable
     set_nacos_config()
-    if not nacos_enable:
+    if nacos_enable == 'False':
         return
     ia_logging.info(f'nacos client start connecting:{server_address},{namespace}')
     client = NacosClient(server_addresses=server_address, namespace=namespace, password=f"{password}", username=f"{username}")
