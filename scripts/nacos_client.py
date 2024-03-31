@@ -56,7 +56,7 @@ def set_nacos_config():
     password = get_ia_config('nacos_password', profiles)
     nacos_enable = get_ia_config('nacos_enable', profiles)
 def nacos_client_connect(_: gr.Blocks, app: FastAPI):
-    global client
+    global client, nacos_enable
     set_nacos_config()
     if not nacos_enable:
         return
