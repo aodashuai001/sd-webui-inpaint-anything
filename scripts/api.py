@@ -31,6 +31,7 @@ import gc
 
 import json
 import pickle
+import requests
 from datetime import datetime, timedelta
 
 from abc import ABCMeta, abstractmethod
@@ -70,9 +71,27 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         @classmethod
         def success(cls, data = None):
             return RespResult(code=0, msg='Success', data=data)
+
     @app.get("/inpaint-anything/heartbeat")
     async def heartbeat():
         return RespResult.success()
+    class EdgeMaskRequest(BaseModel):
+        mask_image_url: str
+        edge_size: int = 10
+    @app.post("/inpaint-anything/edge/mask")
+    async def get_edge_mask(payload: EdgeMaskRequest = Body(...)) -> Any:
+        img = download_image(payload.mask_image_url)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*payload.edge_size+1, 2*payload.edge_size+1))
+
+        # 执行膨胀操作以获取外扩10像素的遮罩
+        dilated_mask = cv2.dilate(img, kernel, iterations=1)
+
+        # 执行腐蚀操作以获取内缩10像素的遮罩
+        eroded_mask = cv2.erode(img, kernel, iterations=1)
+
+        # 从膨胀的遮罩中减去腐蚀的遮罩，得到边缘区域
+        edge_mask = cv2.subtract(dilated_mask, eroded_mask)
+        return RespResult.success(encode_to_base64(edge_mask))
     class SamPredictRequest(BaseModel):
         image_id: int
         input_image: str
@@ -124,6 +143,77 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
             encode += '=' * missing_padding
         decode = base64.b64encode(encode)
         return decode
+    @app.post("/inpaint-anything/sam/mask")
+    async def run_sam_mask(payload: SamPredictRequest = Body(...)) -> Any:
+        print(f"inpaint-anything API /inpaint-anything/sam/all received request")
+
+        global sam_dict
+        sam_model_id = payload.sam_model_name
+        input_image = decode_to_ndarray(payload.input_image)
+        input_image = remove_alpha_channel(input_image)
+        anime_style_chk = payload.anime_style_chk
+        sam_checkpoint = os.path.join(ia_file_manager.models_dir, sam_model_id)
+        if not os.path.isfile(sam_checkpoint):
+            return RespResult.failed(f"{sam_model_id} not found, please download")
+        if input_image is None:
+            return RespResult.failed("Input image not found")
+
+        set_ia_config(IAConfig.KEYS.SAM_MODEL_ID, sam_model_id, IAConfig.SECTIONS.USER)
+
+        if sam_dict["sam_masks"] is not None:
+            sam_dict["sam_masks"] = None
+            gc.collect()
+
+        ia_logging.info(f"input_image: {input_image.shape} {input_image.dtype}")
+
+        cm_pascal = create_pascal_label_colormap()
+        seg_colormap = cm_pascal
+        seg_colormap = np.array([c for c in seg_colormap if max(c) >= 64], dtype=np.uint8)
+
+        sam_mask_generator = get_sam_mask_generator(sam_checkpoint, anime_style_chk)
+        ia_logging.info(f"{sam_mask_generator.__class__.__name__} {sam_model_id}")
+        try:
+            sam_masks = sam_mask_generator.generate(input_image)
+        except Exception as e:
+            print(traceback.format_exc())
+            ia_logging.error(str(e))
+            del sam_mask_generator
+            return RespResult.failed("SAM generate failed")
+
+        ia_logging.info("sam_masks: {}, {}".format(len(sam_masks),np.array(sam_masks[0]["segmentation"]).shape))
+        # sam_masks = sorted(sam_masks, key=lambda x: np.sum(x.get("segmentation").astype(np.uint32)))
+
+        # sam_dict["sam_masks"] = copy.deepcopy(sam_masks)
+        # print(sam_masks)
+        for idx, seg_dict in enumerate(sam_masks):
+
+            # 将字节对象转换为Base64字符串  
+            base64_str = bool_array_to_base64(np.array(seg_dict["segmentation"]))
+
+            # 使用pickle序列化数组
+            # serialized_array = pickle.dumps(seg_dict["segmentation"])
+
+            # 将序列化后的字节流编码为Base64
+            # encoded_array = base64.b64encode(serialized_array)
+
+            # 将Base64字节字符串解码为普通字符串（如果需要）
+            # encoded_str = encoded_array.decode('utf-8')
+            seg_dict["segmentation"] = base64_str
+        # print(sam_masks)
+        # del sam_masks
+        return RespResult.success(data=sam_masks)
+    def bool_array_to_base64(bool_array):
+        new_arr = np.argwhere(bool_array)
+        bytes_io = BytesIO()
+        # 使用numpy.save将数组保存到BytesIO对象中
+        np.save(bytes_io, new_arr)
+        # 获取保存的数据作为字节
+        bytes_data = bytes_io.getvalue()
+        # 对字节数据进行Base64编码
+        base64_encoded = base64.b64encode(bytes_data)
+        # 将Base64编码的字节解码为字符串，以便于显示或存储
+        base64_string = base64_encoded.decode('utf-8')
+        return base64_string
     @app.post("/inpaint-anything/sam/all")
     async def run_sam_all(payload: SamPredictRequest = Body(...)) -> Any:
         print(f"inpaint-anything API /inpaint-anything/sam/all received request")
@@ -131,6 +221,7 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
         global sam_dict
         sam_model_id = payload.sam_model_name
         input_image = decode_to_ndarray(payload.input_image)
+        input_image = remove_alpha_channel(input_image)
         anime_style_chk = payload.anime_style_chk
         sam_checkpoint = os.path.join(ia_file_manager.models_dir, sam_model_id)
         if not os.path.isfile(sam_checkpoint):
@@ -415,6 +506,39 @@ def inpaint_anything_api(_: gr.Blocks, app: FastAPI):
 
         return new_sel_mask
 
+def remove_alpha_channel(image_array):
+    """
+    检测图片是否有alpha通道，如果有则转换为不带alpha通道的RGB图片。
+    
+    :param image_array: 输入图片的ndarray。
+    :return: 不带alpha通道的RGB图片的ndarray。
+    """
+    # 将ndarray转换为Pillow Image对象
+    image = Image.fromarray(image_array)
+    
+    # 检查图片是否有alpha通道
+    if image.mode == 'RGBA':
+        # 删除alpha通道
+        rgb_image = image.convert('RGB')
+        # 将Pillow Image对象转换回ndarray
+        rgb_array = np.array(rgb_image)
+        return rgb_array
+    else:
+        # 如果没有alpha通道，直接返回原ndarray
+        return image_array
+def download_image(url):
+    # 发送HTTP GET请求下载图片
+    response = requests.get(url)
+    # 确保请求成功
+    if response.status_code == 200:
+        # 将从url获取的内容转换为numpy数组
+        image_array = np.asarray(bytearray(response.content), dtype=np.uint8)
+        # 使用OpenCV转换数组为图片对象
+        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+        return image
+    else:
+        # 如果请求失败，抛出异常
+        response.raise_for_status()
 def decode_to_ndarray(image) -> np.ndarray:
     if os.path.exists(image):
         return np.array(Image.open(image))
