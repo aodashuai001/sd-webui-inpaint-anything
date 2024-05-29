@@ -47,8 +47,7 @@ def get_sam_mask_generator(sam_checkpoint, anime_style_chk=False):
         points_per_batch = 64
 
     pred_iou_thresh = 0.88 if not anime_style_chk else 0.83
-    # stability_score_thresh = 0.95 if not anime_style_chk else 0.9
-    stability_score_thresh = 0.88
+    stability_score_thresh = 0.875 if not anime_style_chk else 0.9
 
     if os.path.isfile(sam_checkpoint):
         torch.load = safe.unsafe_torch_load
@@ -61,7 +60,7 @@ def get_sam_mask_generator(sam_checkpoint, anime_style_chk=False):
         else:
             sam.to(device=devices.device)
         sam_mask_generator = SamAutomaticMaskGeneratorLocal(
-            model=sam, points_per_batch=points_per_batch, pred_iou_thresh=pred_iou_thresh, stability_score_thresh=stability_score_thresh,  min_mask_region_area=20)
+            model=sam, points_per_batch=points_per_batch, pred_iou_thresh=pred_iou_thresh, stability_score_thresh=stability_score_thresh)
         torch.load = safe.load
     else:
         sam_mask_generator = None
